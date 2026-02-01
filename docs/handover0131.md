@@ -54,6 +54,11 @@ wasmtime dev で enum 値が変更されたため、`DevBuild=true` のときだ
 - `Directory.Build.props` で `DevBuild=true` のとき `WASMTIME_DEV` を `DefineConstants` に追加。
 - これにより `Value`/`TrapCode` をビルド時に dev/stable で切替。
 
+### 6. FieldOffset 属性の条件付きコンパイル修正
+- `Value` 構造体のフィールド定義で `[FieldOffset]` 属性も `#if WASMTIME_DEV` で囲む必要があった。
+- `FieldOffset` 属性は `LayoutKind.Explicit` でのみ有効。
+- `DevBuild=false` では `LayoutKind.Sequential` を使用するため、`FieldOffset` なしのフィールド定義が必要。
+
 ## Windowsでの検証手順
 ### DevBuild=true (dev)
 ```
@@ -70,13 +75,18 @@ dotnet test tests/Wasmtime.Tests.csproj -c Release -p:DevBuild=false
 ※ `DevBuild` を切り替えると C API のダウンロード先が変わる（`wasmtime-dev-*` と `wasmtime-v35.0.0-*`）ため、必要なら `src/obj` を削除して再取得してもOK。
 
 ## テスト結果
-- **265 passed**, 2 skipped, 0 failed
+| ビルドモード | wasmtime バージョン | 結果 |
+|-------------|-------------------|------|
+| `DevBuild=true` | dev | **265 passed**, 2 skipped, 0 failed |
+| `DevBuild=false` | v35.0.0 | **265 passed**, 2 skipped, 0 failed |
+
 - スキップされた2件は `Memory64AccessTests` (想定どおり)
 
 ## 確認済み問題
 1. **MemoryAccessTests.ItGrows クラッシュ** → P/Invoke 呼び出し規約修正で解決
 2. **"unknown wasmtime_valkind_t: 9" クラッシュ** → 構造体サイズ修正で解決
 3. **FuelConsumption テスト失敗** → TrapCode enum 修正で解決
+4. **DevBuild=false でコンパイルエラー (CS0636)** → FieldOffset 条件付きコンパイル修正で解決
 
 ## 補足
 - .dmp の記録では `coreclr!Thread::DoAppropriateAptStateWait` / `Wasmtime.Memory..ctor` / `wasm_memorytype_delete` が関係していた。
