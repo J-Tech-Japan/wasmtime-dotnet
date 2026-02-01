@@ -511,11 +511,16 @@ namespace Wasmtime
 
         public static readonly Native.Finalizer Finalizer = (p) => GCHandle.FromIntPtr(p).Free();
 
+#if WASMTIME_DEV
         [FieldOffset(0)]
         private ValueKind kind;
 
         [FieldOffset(8)]
         private ValueUnion of;
+#else
+        private ValueKind kind;
+        private ValueUnion of;
+#endif
     }
 
     [StructLayout(LayoutKind.Explicit)]
