@@ -19,16 +19,16 @@
   - `Store.Native.Finalizer`
   - `Value.Native.Finalizer`
 
-### 3. 構造体サイズの修正 (wasmtime dev 対応)
-wasmtime dev ブランチで構造体サイズが変更されたため、以下を修正:
+### 3. 構造体サイズの修正 (wasmtime dev 対応、DevBuildで切替)
+wasmtime dev ブランチで構造体サイズが変更されたため、`DevBuild=true` のときだけ dev 用レイアウトに切替:
 
 **Value.cs:**
 - `AnyRef`: 16バイト → 24バイト (`IntPtr __private3` を追加)
 - `ExternRef`: 16バイト → 24バイト (`IntPtr __private3` を追加)
 - `Value`: 24バイト → 32バイト (`[StructLayout(LayoutKind.Explicit, Size = 32)]` に変更)
 
-### 4. TrapCode enum の修正 (wasmtime dev 対応)
-wasmtime dev で enum 値が変更されたため、`TrapException.cs` の `TrapCode` を更新:
+### 4. TrapCode enum の修正 (wasmtime dev 対応、DevBuildで切替)
+wasmtime dev で enum 値が変更されたため、`DevBuild=true` のときだけ dev 用の `TrapCode` に切替:
 
 - `AlwaysTrapAdapter` を削除（wasmtime dev で廃止）
 - `OutOfFuel` を 12 → 11 に変更
@@ -49,6 +49,25 @@ wasmtime dev で enum 値が変更されたため、`TrapException.cs` の `Trap
   - `ListOutOfBounds = 31`
   - `InvalidDiscriminant = 32`
   - `UnalignedPointer = 33`
+
+### 5. DevBuild 定義の追加
+- `Directory.Build.props` で `DevBuild=true` のとき `WASMTIME_DEV` を `DefineConstants` に追加。
+- これにより `Value`/`TrapCode` をビルド時に dev/stable で切替。
+
+## Windowsでの検証手順
+### DevBuild=true (dev)
+```
+git pull
+dotnet test tests/Wasmtime.Tests.csproj -c Release -p:DevBuild=true
+```
+
+### DevBuild=false (安定版 35.0.0)
+```
+git pull
+dotnet test tests/Wasmtime.Tests.csproj -c Release -p:DevBuild=false
+```
+
+※ `DevBuild` を切り替えると C API のダウンロード先が変わる（`wasmtime-dev-*` と `wasmtime-v35.0.0-*`）ため、必要なら `src/obj` を削除して再取得してもOK。
 
 ## テスト結果
 - **265 passed**, 2 skipped, 0 failed

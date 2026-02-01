@@ -37,6 +37,7 @@ namespace Wasmtime
         Unreachable = 9,
         /// <summary>The trap was the result of interrupting execution.</summary>
         Interrupt = 10,
+#if WASMTIME_DEV
         /// <summary>The trap was the result of running out of the configured fuel amount.</summary>
         OutOfFuel = 11,
         /// <summary>
@@ -139,6 +140,55 @@ namespace Wasmtime
         /// The trap was the result of a component passing an unaligned pointer when lifting or lowering a value.
         /// </summary>
         UnalignedPointer = 33
+#else
+        /// <summary>
+        /// The trap was the result of executing a function that was `canon lift`'d, then `canonlower`'d, then called.
+        /// </summary>
+        /// <remarks>
+        /// When the component model feature is enabled this trap represents a function that was `canon lift`'d,
+        /// then `canonlower`'d, then called. This combination of creation of a function in the component model
+        /// generates a function that always traps and, when called, produces this flavor of trap.
+        /// </remarks>
+        AlwaysTrapAdapter = 11,
+        /// <summary>The trap was the result of running out of the configured fuel amount.</summary>
+        OutOfFuel = 12,
+        /// <summary>
+        /// The trap was the result of atomic wait operations on non-shared memory.
+        /// </summary>
+        AtomicWaitNonSharedMemory = 13,
+        /// <summary>
+        /// The trap was the result of a call to a null reference.
+        /// </summary>
+        NullReference = 14,
+        /// <summary>
+        /// The trap was the result of an attempt to access beyond the bounds of an array.
+        /// </summary>
+        ArrayOutOfBounds = 15,
+        /// <summary>
+        /// The trap was the result of an allocation that was too large to succeed.
+        /// </summary>
+        AllocationTooLarge = 16,
+        /// <summary>
+        /// The trap was the result of an attempt to cast a reference to a type that it is not an instance of.
+        /// </summary>
+        CastFailure = 17,
+        /// <summary>
+        /// The trap was the result of a component calling another component that would have violated the reentrance rules.
+        /// </summary>
+        CannotEnterComponent = 18,
+        /// <summary>
+        /// The trap was the result of an async-lifted export failing to return a valid async result.
+        /// </summary>
+        /// <remarks>
+        /// An async-lifted export failed to produce a result by calling `task.return` before returning `STATUS_DONE`
+        /// and/or after all host tasks completed.
+        /// </remarks>
+        NoAsyncResult = 19,
+        /// <summary>
+        /// The trap was the result of a Pulley opcode executed at runtime when the opcode was disabled at compile time.
+        /// </summary>
+        DisabledOpCode = 20
+#endif
     }
 
     /// <summary>

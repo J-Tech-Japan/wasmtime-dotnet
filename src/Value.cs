@@ -212,15 +212,27 @@ namespace Wasmtime
     /// <see cref="Store"/>.
     /// </para>
     /// </remarks>
+#if WASMTIME_DEV
     [StructLayout(LayoutKind.Explicit, Size = 32)]
     internal struct Value
     {
         static Value()
         {
-            // Ensure the struct size matches the expected wasmtime_val_t size
+            // Ensure the struct size matches the expected wasmtime_val_t size.
             System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(Value)) == 32,
                 $"Value struct size mismatch: expected 32, got {Marshal.SizeOf(typeof(Value))}");
         }
+#else
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Value
+    {
+        static Value()
+        {
+            // Ensure the struct size matches the expected wasmtime_val_t size.
+            System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(Value)) == 24,
+                $"Value struct size mismatch: expected 24, got {Marshal.SizeOf(typeof(Value))}");
+        }
+#endif
 
         public void Release(Store store)
         {
@@ -534,6 +546,7 @@ namespace Wasmtime
         public V128 v128;
     }
 
+#if WASMTIME_DEV
     [StructLayout(LayoutKind.Sequential)]
     internal struct AnyRef
     {
@@ -561,4 +574,29 @@ namespace Wasmtime
 
         private IntPtr __private3;
     }
+#else
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct AnyRef
+    {
+        static AnyRef() => System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(AnyRef)) == 16);
+
+        public ulong store;
+
+        private uint __private1;
+
+        private uint __private2;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ExternRef
+    {
+        static ExternRef() => System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(ExternRef)) == 16);
+
+        public ulong store;
+
+        private uint __private1;
+
+        private uint __private2;
+    }
+#endif
 }
