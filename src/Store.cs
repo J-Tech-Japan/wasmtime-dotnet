@@ -319,6 +319,7 @@ namespace Wasmtime
 
         private static class Native
         {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void Finalizer(IntPtr data);
 
             [DllImport(Engine.LibraryName, CallingConvention = CallingConvention.Cdecl)]

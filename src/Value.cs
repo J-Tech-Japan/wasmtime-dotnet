@@ -212,9 +212,16 @@ namespace Wasmtime
     /// <see cref="Store"/>.
     /// </para>
     /// </remarks>
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 32)]
     internal struct Value
     {
+        static Value()
+        {
+            // Ensure the struct size matches the expected wasmtime_val_t size
+            System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(Value)) == 32,
+                $"Value struct size mismatch: expected 32, got {Marshal.SizeOf(typeof(Value))}");
+        }
+
         public void Release(Store store)
         {
             Native.wasmtime_val_unroot(store.Context.handle, this);
@@ -271,7 +278,7 @@ namespace Wasmtime
 
         public static Value FromValueBox(Store store, ValueBox box)
         {
-            var value = new Value();
+            var value = default(Value);
             value.kind = box.Kind;
             value.of = box.Union;
 
@@ -467,6 +474,7 @@ namespace Wasmtime
 
         public static class Native
         {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void Finalizer(IntPtr data);
 
             [DllImport(Engine.LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -491,7 +499,10 @@ namespace Wasmtime
 
         public static readonly Native.Finalizer Finalizer = (p) => GCHandle.FromIntPtr(p).Free();
 
+        [FieldOffset(0)]
         private ValueKind kind;
+
+        [FieldOffset(8)]
         private ValueUnion of;
     }
 
@@ -526,20 +537,28 @@ namespace Wasmtime
     [StructLayout(LayoutKind.Sequential)]
     internal struct AnyRef
     {
+        static AnyRef() => System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(AnyRef)) == 24);
+
         public ulong store;
 
         private uint __private1;
 
         private uint __private2;
+
+        private IntPtr __private3;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct ExternRef
     {
+        static ExternRef() => System.Diagnostics.Debug.Assert(Marshal.SizeOf(typeof(ExternRef)) == 24);
+
         public ulong store;
 
         private uint __private1;
 
         private uint __private2;
+
+        private IntPtr __private3;
     }
 }
