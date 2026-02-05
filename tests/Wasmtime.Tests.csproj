@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <None Update="Modules/*.wat" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Modules/*.wasm" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="Modules/hello.wat" LogicalName="hello.wat" />
     <EmbeddedResource Include="Modules/hello.wasm" LogicalName="hello.wasm" />
   </ItemGroup>
@@ -29,5 +30,12 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <!-- Copy the preview2 shim native library if it exists -->
+  <ItemGroup Condition="Exists('..\native\wasmtime-preview2-shim\target\release\libwasmtime_preview2_shim.dylib')">
+    <None Include="..\native\wasmtime-preview2-shim\target\release\libwasmtime_preview2_shim.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="libwasmtime_preview2_shim.dylib" />
+  </ItemGroup>
 
 </Project>
