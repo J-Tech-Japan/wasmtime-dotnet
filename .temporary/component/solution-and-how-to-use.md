@@ -14,7 +14,7 @@ C#, Rust, Go, TypeScript の 4 言語で生成された WASM モジュールを 
 | TypeScript | Component Model (WIT) | コンポーネント | P2 (@0.2.3) | 必要 | 11 MB | 動作確認済み |
 | C# | C-ABI (Component内包) | コンポーネント (export なし) | P2 (@0.2.3), sockets | 不要 | 9.5 MB | 要テスト |
 | Rust | C-ABI | コアモジュール | なし | 不要 | 265 KB | 要テスト |
-| Go | C-ABI | コアモジュール (TinyGo) | preview1 | 不要 | — | module.wasm 未ビルド |
+| Go | C-ABI | コアモジュール (TinyGo) | preview1 | 不要 | 1.3 MB | ビルド済み |
 
 ### 各言語の WASM エクスポート関数
 
@@ -105,7 +105,8 @@ Rust/Go WASM (コアモジュール)
      ▼
 wasmtime-dotnet Core Module API
   ├── Engine + Store + Linker
-  ├── WASI preview1 (Go の場合)
+  ├── WASI preview1 (Rust: fd_write, random_get, environ_*, proc_exit)
+  │                  (Go: fd_write, proc_exit, clock_time_get, args_*, random_get)
   └── Module.FromFile()
      │
      ▼
@@ -114,6 +115,9 @@ wasmtime-dotnet Core Module API
      ▼
 C-ABI 関数呼び出し (alloc/dealloc + ptr/len)
 ```
+
+Rust モジュール: 265 KB, WASI preview1 最小インポート (fd_write, random_get, environ_*, proc_exit)
+Go モジュール: 1.3 MB, WASI preview1 インポート (fd_write, proc_exit, clock_time_get, args_*, random_get)
 
 **C# コード例:**
 ```csharp
@@ -229,9 +233,15 @@ public class WasmModuleRunner : IDisposable
 ### 必要なブランチ
 
 ```bash
-git clone https://github.com/<your-org>/wasmtime-dotnet.git
+# J-Tech-Japan fork から clone
+git clone https://github.com/J-Tech-Japan/wasmtime-dotnet.git
 cd wasmtime-dotnet
 git checkout feature/component-model
+
+# または既存リポジトリに remote 追加
+git remote add jtech https://github.com/J-Tech-Japan/wasmtime-dotnet.git
+git fetch jtech
+git checkout jtech/feature/component-model
 ```
 
 **feature/component-model ブランチに含まれるもの:**
@@ -339,18 +349,40 @@ TypeScript コンポーネントは wasi:http をインポートするため、C
 .NET の `wasm32-wasip2` ターゲットで生成された WASM はコンポーネントだが、
 WIT のトップレベル world にはエクスポートがない。C-ABI 関数はコアモジュール内にのみ存在。
 
+コアモジュール内のエクスポート:
+```
+alloc, dealloc, create_instance, apply_event, serialize_state,
+restore_state, execute_query, execute_list_query, serialize_event,
+deserialize_event, get_event_types, _initialize, cabi_realloc, memory
+```
+
+コンポーネントの WASI P2 インポート:
+```
+wasi:io, wasi:cli, wasi:clocks, wasi:filesystem, wasi:sockets (udp, tcp), wasi:random
+```
+※ wasi:http は不要（TypeScript とは異なる）
+
 **対処**: `ComponentCoreExtractor.ExtractMainModule()` でコアモジュールを抽出してから Core Module API で実行。
 **長期**: NativeAOT-LLVM + wit-bindgen で WIT エクスポートを追加。
 
-### 4. Go WASM の module.wasm が存在しない
+### 4. Go WASM のビルド
 
-Go のモジュールは manifest.json のみ存在し、module.wasm がビルドされていない。
+Go モジュールは TinyGo (Docker) でビルド済み。再ビルドが必要な場合:
 
-**対処**: TinyGo でビルドが必要:
 ```bash
-cd src/poc/go
-tinygo build -o ../wasm-modules/go/1.0.0/module.wasm -target=wasi ./wasm/main.go
+# TinyGo Docker でビルド
+docker run --rm -v "$PWD":/repo -w /repo/src/poc/go/wasm tinygo/tinygo:0.37.0 \
+  tinygo build -o /repo/src/poc/go/wasm/bin/module.wasm -target=wasi .
+
+# wasm-modules に配置
+cp src/poc/go/wasm/bin/module.wasm src/poc/wasm-modules/go/1.0.0/module.wasm
 ```
+
+Go モジュールの特徴:
+- コアモジュール (Component Model ではない)、1.3 MB
+- WASI preview1 インポート: `fd_write`, `proc_exit`, `clock_time_get`, `args_sizes_get`, `args_get`, `random_get`
+- C-ABI エクスポート: `alloc`, `dealloc`, `create_instance`, 全関数揃い
+- TinyGo asyncify エクスポートも含まれる
 
 ### 5. Rust シムと C API は別の wasmtime ランタイム
 
