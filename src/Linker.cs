@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
@@ -14,6 +16,10 @@ namespace Wasmtime
     public partial class Linker : IDisposable
     {
         private const int StackallocThreshold = 256;
+        private const int WasiPreview2StdinHandle = 1;
+        private const int WasiPreview2StdoutHandle = 2;
+        private const int WasiPreview2StderrHandle = 3;
+        private const int WasiPreview2PollableHandle = 1;
 
         /// <summary>
         /// Constructs a new linker from the given engine.
@@ -181,10 +187,286 @@ namespace Wasmtime
             DefineResourceDropStub("wasi:io/poll@0.2.0", "pollable");
             DefineResourceDropStub("wasi:io/streams@0.2.0", "input-stream");
             DefineResourceDropStub("wasi:io/streams@0.2.0", "output-stream");
+            DefineResourceDropStub("wasi:cli/terminal-input@0.2.0", "terminal-input");
+            DefineResourceDropStub("wasi:cli/terminal-output@0.2.0", "terminal-output");
+            DefineResourceDropStub("wasi:filesystem/types@0.2.0", "descriptor");
+            DefineResourceDropStub("wasi:filesystem/types@0.2.0", "directory-entry-stream");
             DefineResourceDropStub("wasi:sockets/udp@0.2.0", "udp-socket");
             DefineResourceDropStub("wasi:sockets/udp@0.2.0", "incoming-datagram-stream");
             DefineResourceDropStub("wasi:sockets/udp@0.2.0", "outgoing-datagram-stream");
             DefineResourceDropStub("wasi:sockets/tcp@0.2.0", "tcp-socket");
+        }
+
+        /// <summary>
+        /// Defines preview2 terminal getter stubs that return "none".
+        /// </summary>
+        /// <remarks>
+        /// Extracted core modules lower these imports to an out-pointer for an optional resource handle.
+        /// Returning "none" avoids requiring terminal support while still allowing execution.
+        /// </remarks>
+        public void DefineWasiPreview2TerminalStubs()
+        {
+            DefineOptionalResourceGetterStub("wasi:cli/terminal-stdin@0.2.0", "get-terminal-stdin");
+            DefineOptionalResourceGetterStub("wasi:cli/terminal-stdout@0.2.0", "get-terminal-stdout");
+            DefineOptionalResourceGetterStub("wasi:cli/terminal-stderr@0.2.0", "get-terminal-stderr");
+        }
+
+        /// <summary>
+        /// Defines preview2 CLI/environment stubs used by extracted core modules.
+        /// </summary>
+        public void DefineWasiPreview2CliStubs()
+        {
+            DefineEmptyListGetterStub("wasi:cli/environment@0.2.0", "get-environment");
+            DefineFunction(
+                "wasi:cli/exit@0.2.0",
+                "exit",
+                (Caller caller, int exitStateAddress) =>
+                {
+                    throw new InvalidOperationException(
+                        "The WebAssembly component requested process exit via WASI preview2.");
+                });
+
+            DefineFunction("wasi:cli/stdin@0.2.0", "get-stdin", (Caller caller) => WasiPreview2StdinHandle);
+            DefineFunction("wasi:cli/stdout@0.2.0", "get-stdout", (Caller caller) => WasiPreview2StdoutHandle);
+            DefineFunction("wasi:cli/stderr@0.2.0", "get-stderr", (Caller caller) => WasiPreview2StderrHandle);
+        }
+
+        /// <summary>
+        /// Defines preview2 clock stubs backed by host time.
+        /// </summary>
+        public void DefineWasiPreview2ClockStubs()
+        {
+            DefineFunction(
+                "wasi:clocks/monotonic-clock@0.2.0",
+                "now",
+                (Caller caller) =>
+                    (long)(Stopwatch.GetTimestamp() * (1_000_000_000d / Stopwatch.Frequency)));
+
+            DefineFunction(
+                "wasi:clocks/monotonic-clock@0.2.0",
+                "subscribe-instant",
+                (Caller caller, long when) => WasiPreview2PollableHandle);
+
+            DefineFunction(
+                "wasi:clocks/monotonic-clock@0.2.0",
+                "subscribe-duration",
+                (Caller caller, long duration) => WasiPreview2PollableHandle);
+
+            DefineFunction(
+                "wasi:clocks/wall-clock@0.2.0",
+                "now",
+                (Caller caller, int resultAddress) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var memory = GetCallerMemory(caller);
+                    var seconds = now.ToUnixTimeSeconds();
+                    var nanoseconds = (int)((now.Ticks % TimeSpan.TicksPerSecond) * 100);
+                    memory.WriteInt64(resultAddress, seconds);
+                    memory.WriteInt32(resultAddress + 8, nanoseconds);
+                });
+        }
+
+        /// <summary>
+        /// Defines preview2 stream and poll stubs that provide inert handles and empty reads/writes.
+        /// </summary>
+        public void DefineWasiPreview2StreamStubs()
+        {
+            DefineFunction(
+                "wasi:io/poll@0.2.0",
+                "[method]pollable.block",
+                (Caller caller, int pollableHandle) => { });
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]input-stream.blocking-read",
+                (Caller caller, int streamHandle, long maxBytes, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]input-stream.subscribe",
+                (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]output-stream.check-write",
+                (Caller caller, int streamHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]output-stream.write",
+                (Caller caller, int streamHandle, int bufferAddress, int bufferLength, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]output-stream.blocking-flush",
+                (Caller caller, int streamHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+
+            DefineFunction(
+                "wasi:io/streams@0.2.0",
+                "[method]output-stream.subscribe",
+                (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
+        }
+
+        /// <summary>
+        /// Defines preview2 filesystem stubs for the extracted .NET core module.
+        /// </summary>
+        public void DefineWasiPreview2FilesystemStubs()
+        {
+            DefineEmptyListGetterStub("wasi:filesystem/preopens@0.2.0", "get-directories");
+
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.read-via-stream",
+                (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.write-via-stream",
+                (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.append-via-stream",
+                (Caller caller, int descriptorHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.advise",
+                (Caller caller, int descriptorHandle, long offset, long length, int advice, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.get-flags",
+                (Caller caller, int descriptorHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.set-size",
+                (Caller caller, int descriptorHandle, long size, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.read",
+                (Caller caller, int descriptorHandle, long length, long offset, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.read-directory",
+                (Caller caller, int descriptorHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.stat",
+                (Caller caller, int descriptorHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.stat-at",
+                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.open-at",
+                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int openFlags, int descriptorFlags, int pathFlags, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.readlink-at",
+                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.unlink-file-at",
+                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.metadata-hash",
+                (Caller caller, int descriptorHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]descriptor.metadata-hash-at",
+                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+            DefineFunction(
+                "wasi:filesystem/types@0.2.0",
+                "[method]directory-entry-stream.read-directory-entry",
+                (Caller caller, int streamHandle, int resultAddress) =>
+                {
+                    ZeroGuestMemory(caller, resultAddress, 16);
+                });
+        }
+
+        /// <summary>
+        /// Defines preview2 random stubs backed by host randomness.
+        /// </summary>
+        public void DefineWasiPreview2RandomStubs()
+        {
+            DefineFunction(
+                "wasi:random/random@0.2.0",
+                "get-random-bytes",
+                (Caller caller, long byteCount, int resultAddress) =>
+                {
+                    if (byteCount < 0 || byteCount > int.MaxValue)
+                    {
+                        throw new ArgumentOutOfRangeException(nameof(byteCount));
+                    }
+
+                    var memory = GetCallerMemory(caller);
+                    var length = (int)byteCount;
+                    if (length == 0)
+                    {
+                        WriteListResult(memory, resultAddress, 0, 0);
+                        return;
+                    }
+
+                    var pointer = AllocateGuestBuffer(caller, length);
+                    RandomNumberGenerator.Fill(memory.GetSpan(pointer, length));
+                    WriteListResult(memory, resultAddress, pointer, length);
+                });
         }
 
         /// <summary>
@@ -194,6 +476,12 @@ namespace Wasmtime
         {
             DefineWasiPreview1AdapterStubs();
             DefineWasiPreview2ResourceDropStubs();
+            DefineWasiPreview2TerminalStubs();
+            DefineWasiPreview2CliStubs();
+            DefineWasiPreview2ClockStubs();
+            DefineWasiPreview2StreamStubs();
+            DefineWasiPreview2FilesystemStubs();
+            DefineWasiPreview2RandomStubs();
         }
 
         private void DefineResourceDropStub(string module, string resourceName)
@@ -212,6 +500,101 @@ namespace Wasmtime
                 module,
                 $"[resource-drop]{resourceName}",
                 (Caller caller, int handle) => { });
+        }
+
+        private void DefineOptionalResourceGetterStub(string module, string name)
+        {
+            if (module is null)
+            {
+                throw new ArgumentNullException(nameof(module));
+            }
+
+            if (name is null)
+            {
+                throw new ArgumentNullException(nameof(name));
+            }
+
+            DefineFunction(
+                module,
+                name,
+                (Caller caller, int resultAddress) =>
+                {
+                    var memory = caller.GetMemory("memory");
+                    if (memory is null)
+                    {
+                        throw new InvalidOperationException("The caller does not export a memory named 'memory'.");
+                    }
+
+                    memory.WriteByte(resultAddress, 0);
+                    memory.WriteInt32(resultAddress + 4, 0);
+                });
+        }
+
+        private void DefineEmptyListGetterStub(string module, string name)
+        {
+            if (module is null)
+            {
+                throw new ArgumentNullException(nameof(module));
+            }
+
+            if (name is null)
+            {
+                throw new ArgumentNullException(nameof(name));
+            }
+
+            DefineFunction(
+                module,
+                name,
+                (Caller caller, int resultAddress) =>
+                {
+                    var memory = GetCallerMemory(caller);
+                    WriteListResult(memory, resultAddress, 0, 0);
+                });
+        }
+
+        private static Memory GetCallerMemory(Caller caller)
+        {
+            var memory = caller.GetMemory("memory");
+            if (memory is null)
+            {
+                throw new InvalidOperationException("The caller does not export a memory named 'memory'.");
+            }
+
+            return memory;
+        }
+
+        private static void ZeroGuestMemory(Caller caller, int address, int bytes)
+        {
+            var memory = GetCallerMemory(caller);
+            memory.GetSpan(address, bytes).Clear();
+        }
+
+        private static void WriteListResult(Memory memory, int resultAddress, int pointer, int length)
+        {
+            memory.WriteInt32(resultAddress, pointer);
+            memory.WriteInt32(resultAddress + 4, length);
+        }
+
+        private static int AllocateGuestBuffer(Caller caller, int size)
+        {
+            if (size <= 0)
+            {
+                return 0;
+            }
+
+            var alloc = caller.GetFunction("alloc")?.WrapFunc<int, int>();
+            if (alloc is null)
+            {
+                throw new InvalidOperationException("The caller does not export an 'alloc' function.");
+            }
+
+            var pointer = alloc(size);
+            if (pointer == 0)
+            {
+                throw new InvalidOperationException("The guest allocator returned a null pointer.");
+            }
+
+            return pointer;
         }
 
         /// <summary>
