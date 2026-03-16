@@ -464,7 +464,10 @@ namespace Wasmtime
                     }
 
                     var pointer = AllocateGuestBuffer(caller, length);
-                    RandomNumberGenerator.Fill(memory.GetSpan(pointer, length));
+                    var randomBytes = new byte[length];
+                    using var randomNumberGenerator = RandomNumberGenerator.Create();
+                    randomNumberGenerator.GetBytes(randomBytes);
+                    randomBytes.CopyTo(memory.GetSpan(pointer, length));
                     WriteListResult(memory, resultAddress, pointer, length);
                 });
         }
