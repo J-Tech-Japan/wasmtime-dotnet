@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,6 +21,8 @@ namespace Wasmtime
         private const int WasiPreview2StdoutHandle = 2;
         private const int WasiPreview2StderrHandle = 3;
         private const int WasiPreview2PollableHandle = 1;
+        private static readonly string[] WasiPreview2Versions = new[] { "0.2.6", "0.2.0" };
+        private static readonly ConcurrentDictionary<string, int> WasiTraceCounts = new();
 
         /// <summary>
         /// Constructs a new linker from the given engine.
@@ -183,18 +186,21 @@ namespace Wasmtime
         /// </remarks>
         public void DefineWasiPreview2ResourceDropStubs()
         {
-            DefineResourceDropStub("wasi:io/error@0.2.0", "error");
-            DefineResourceDropStub("wasi:io/poll@0.2.0", "pollable");
-            DefineResourceDropStub("wasi:io/streams@0.2.0", "input-stream");
-            DefineResourceDropStub("wasi:io/streams@0.2.0", "output-stream");
-            DefineResourceDropStub("wasi:cli/terminal-input@0.2.0", "terminal-input");
-            DefineResourceDropStub("wasi:cli/terminal-output@0.2.0", "terminal-output");
-            DefineResourceDropStub("wasi:filesystem/types@0.2.0", "descriptor");
-            DefineResourceDropStub("wasi:filesystem/types@0.2.0", "directory-entry-stream");
-            DefineResourceDropStub("wasi:sockets/udp@0.2.0", "udp-socket");
-            DefineResourceDropStub("wasi:sockets/udp@0.2.0", "incoming-datagram-stream");
-            DefineResourceDropStub("wasi:sockets/udp@0.2.0", "outgoing-datagram-stream");
-            DefineResourceDropStub("wasi:sockets/tcp@0.2.0", "tcp-socket");
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineResourceDropStub(GetVersionedModule("wasi:io/error", version), "error");
+                DefineResourceDropStub(GetVersionedModule("wasi:io/poll", version), "pollable");
+                DefineResourceDropStub(GetVersionedModule("wasi:io/streams", version), "input-stream");
+                DefineResourceDropStub(GetVersionedModule("wasi:io/streams", version), "output-stream");
+                DefineResourceDropStub(GetVersionedModule("wasi:cli/terminal-input", version), "terminal-input");
+                DefineResourceDropStub(GetVersionedModule("wasi:cli/terminal-output", version), "terminal-output");
+                DefineResourceDropStub(GetVersionedModule("wasi:filesystem/types", version), "descriptor");
+                DefineResourceDropStub(GetVersionedModule("wasi:filesystem/types", version), "directory-entry-stream");
+                DefineResourceDropStub(GetVersionedModule("wasi:sockets/udp", version), "udp-socket");
+                DefineResourceDropStub(GetVersionedModule("wasi:sockets/udp", version), "incoming-datagram-stream");
+                DefineResourceDropStub(GetVersionedModule("wasi:sockets/udp", version), "outgoing-datagram-stream");
+                DefineResourceDropStub(GetVersionedModule("wasi:sockets/tcp", version), "tcp-socket");
+            }
         }
 
         /// <summary>
@@ -206,9 +212,12 @@ namespace Wasmtime
         /// </remarks>
         public void DefineWasiPreview2TerminalStubs()
         {
-            DefineOptionalResourceGetterStub("wasi:cli/terminal-stdin@0.2.0", "get-terminal-stdin");
-            DefineOptionalResourceGetterStub("wasi:cli/terminal-stdout@0.2.0", "get-terminal-stdout");
-            DefineOptionalResourceGetterStub("wasi:cli/terminal-stderr@0.2.0", "get-terminal-stderr");
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineOptionalResourceGetterStub(GetVersionedModule("wasi:cli/terminal-stdin", version), "get-terminal-stdin");
+                DefineOptionalResourceGetterStub(GetVersionedModule("wasi:cli/terminal-stdout", version), "get-terminal-stdout");
+                DefineOptionalResourceGetterStub(GetVersionedModule("wasi:cli/terminal-stderr", version), "get-terminal-stderr");
+            }
         }
 
         /// <summary>
@@ -216,19 +225,22 @@ namespace Wasmtime
         /// </summary>
         public void DefineWasiPreview2CliStubs()
         {
-            DefineEmptyListGetterStub("wasi:cli/environment@0.2.0", "get-environment");
-            DefineFunction(
-                "wasi:cli/exit@0.2.0",
-                "exit",
-                (Caller caller, int exitStateAddress) =>
-                {
-                    throw new InvalidOperationException(
-                        "The WebAssembly component requested process exit via WASI preview2.");
-                });
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineEmptyListGetterStub(GetVersionedModule("wasi:cli/environment", version), "get-environment");
+                DefineFunction(
+                    GetVersionedModule("wasi:cli/exit", version),
+                    "exit",
+                    (Caller caller, int exitStateAddress) =>
+                    {
+                        throw new InvalidOperationException(
+                            "The WebAssembly component requested process exit via WASI preview2.");
+                    });
 
-            DefineFunction("wasi:cli/stdin@0.2.0", "get-stdin", (Caller caller) => WasiPreview2StdinHandle);
-            DefineFunction("wasi:cli/stdout@0.2.0", "get-stdout", (Caller caller) => WasiPreview2StdoutHandle);
-            DefineFunction("wasi:cli/stderr@0.2.0", "get-stderr", (Caller caller) => WasiPreview2StderrHandle);
+                DefineFunction(GetVersionedModule("wasi:cli/stdin", version), "get-stdin", (Caller caller) => WasiPreview2StdinHandle);
+                DefineFunction(GetVersionedModule("wasi:cli/stdout", version), "get-stdout", (Caller caller) => WasiPreview2StdoutHandle);
+                DefineFunction(GetVersionedModule("wasi:cli/stderr", version), "get-stderr", (Caller caller) => WasiPreview2StderrHandle);
+            }
         }
 
         /// <summary>
@@ -236,34 +248,37 @@ namespace Wasmtime
         /// </summary>
         public void DefineWasiPreview2ClockStubs()
         {
-            DefineFunction(
-                "wasi:clocks/monotonic-clock@0.2.0",
-                "now",
-                (Caller caller) =>
-                    (long)(Stopwatch.GetTimestamp() * (1_000_000_000d / Stopwatch.Frequency)));
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineFunction(
+                    GetVersionedModule("wasi:clocks/monotonic-clock", version),
+                    "now",
+                    (Caller caller) =>
+                        (long)(Stopwatch.GetTimestamp() * (1_000_000_000d / Stopwatch.Frequency)));
 
-            DefineFunction(
-                "wasi:clocks/monotonic-clock@0.2.0",
-                "subscribe-instant",
-                (Caller caller, long when) => WasiPreview2PollableHandle);
+                DefineFunction(
+                    GetVersionedModule("wasi:clocks/monotonic-clock", version),
+                    "subscribe-instant",
+                    (Caller caller, long when) => WasiPreview2PollableHandle);
 
-            DefineFunction(
-                "wasi:clocks/monotonic-clock@0.2.0",
-                "subscribe-duration",
-                (Caller caller, long duration) => WasiPreview2PollableHandle);
+                DefineFunction(
+                    GetVersionedModule("wasi:clocks/monotonic-clock", version),
+                    "subscribe-duration",
+                    (Caller caller, long duration) => WasiPreview2PollableHandle);
 
-            DefineFunction(
-                "wasi:clocks/wall-clock@0.2.0",
-                "now",
-                (Caller caller, int resultAddress) =>
-                {
-                    var now = DateTimeOffset.UtcNow;
-                    var memory = GetCallerMemory(caller);
-                    var seconds = now.ToUnixTimeSeconds();
-                    var nanoseconds = (int)((now.Ticks % TimeSpan.TicksPerSecond) * 100);
-                    memory.WriteInt64(resultAddress, seconds);
-                    memory.WriteInt32(resultAddress + 8, nanoseconds);
-                });
+                DefineFunction(
+                    GetVersionedModule("wasi:clocks/wall-clock", version),
+                    "now",
+                    (Caller caller, int resultAddress) =>
+                    {
+                        var now = DateTimeOffset.UtcNow;
+                        var memory = GetCallerMemory(caller);
+                        var seconds = now.ToUnixTimeSeconds();
+                        var nanoseconds = (int)((now.Ticks % TimeSpan.TicksPerSecond) * 100);
+                        memory.WriteInt64(resultAddress, seconds);
+                        memory.WriteInt32(resultAddress + 8, nanoseconds);
+                    });
+            }
         }
 
         /// <summary>
@@ -271,52 +286,76 @@ namespace Wasmtime
         /// </summary>
         public void DefineWasiPreview2StreamStubs()
         {
-            DefineFunction(
-                "wasi:io/poll@0.2.0",
-                "[method]pollable.block",
-                (Caller caller, int pollableHandle) => { });
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineFunction(
+                    GetVersionedModule("wasi:io/poll", version),
+                    "[method]pollable.block",
+                    (Caller caller, int pollableHandle) => { });
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]input-stream.blocking-read",
-                (Caller caller, int streamHandle, long maxBytes, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
+                DefineFunction(
+                    GetVersionedModule("wasi:io/poll", version),
+                    "poll",
+                    (Caller caller, int pollablesAddress, int pollablesLength, int resultAddress) =>
+                    {
+                        var memory = GetCallerMemory(caller);
+                        if (pollablesLength <= 0)
+                        {
+                            WriteListResult(memory, resultAddress, 0, 0);
+                            return;
+                        }
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]input-stream.subscribe",
-                (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
+                        int pointer = AllocateGuestBuffer(caller, pollablesLength * sizeof(int));
+                        for (int index = 0; index < pollablesLength; index++)
+                        {
+                            memory.WriteInt32(pointer + (index * sizeof(int)), index);
+                        }
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]output-stream.check-write",
-                (Caller caller, int streamHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
+                        WriteListResult(memory, resultAddress, pointer, pollablesLength);
+                    });
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]output-stream.write",
-                (Caller caller, int streamHandle, int bufferAddress, int bufferLength, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]input-stream.blocking-read",
+                    (Caller caller, int streamHandle, long maxBytes, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]output-stream.blocking-flush",
-                (Caller caller, int streamHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]input-stream.subscribe",
+                    (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
 
-            DefineFunction(
-                "wasi:io/streams@0.2.0",
-                "[method]output-stream.subscribe",
-                (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]output-stream.check-write",
+                    (Caller caller, int streamHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]output-stream.write",
+                    (Caller caller, int streamHandle, int bufferAddress, int bufferLength, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]output-stream.blocking-flush",
+                    (Caller caller, int streamHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+
+                DefineFunction(
+                    GetVersionedModule("wasi:io/streams", version),
+                    "[method]output-stream.subscribe",
+                    (Caller caller, int streamHandle) => WasiPreview2PollableHandle);
+            }
         }
 
         /// <summary>
@@ -324,120 +363,123 @@ namespace Wasmtime
         /// </summary>
         public void DefineWasiPreview2FilesystemStubs()
         {
-            DefineEmptyListGetterStub("wasi:filesystem/preopens@0.2.0", "get-directories");
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineEmptyListGetterStub(GetVersionedModule("wasi:filesystem/preopens", version), "get-directories");
 
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.read-via-stream",
-                (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.write-via-stream",
-                (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.append-via-stream",
-                (Caller caller, int descriptorHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.advise",
-                (Caller caller, int descriptorHandle, long offset, long length, int advice, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.get-flags",
-                (Caller caller, int descriptorHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.set-size",
-                (Caller caller, int descriptorHandle, long size, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.read",
-                (Caller caller, int descriptorHandle, long length, long offset, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.read-directory",
-                (Caller caller, int descriptorHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.stat",
-                (Caller caller, int descriptorHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.stat-at",
-                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.open-at",
-                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int openFlags, int descriptorFlags, int pathFlags, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.readlink-at",
-                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.unlink-file-at",
-                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.metadata-hash",
-                (Caller caller, int descriptorHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]descriptor.metadata-hash-at",
-                (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
-            DefineFunction(
-                "wasi:filesystem/types@0.2.0",
-                "[method]directory-entry-stream.read-directory-entry",
-                (Caller caller, int streamHandle, int resultAddress) =>
-                {
-                    ZeroGuestMemory(caller, resultAddress, 16);
-                });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.read-via-stream",
+                    (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.write-via-stream",
+                    (Caller caller, int descriptorHandle, long offset, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.append-via-stream",
+                    (Caller caller, int descriptorHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.advise",
+                    (Caller caller, int descriptorHandle, long offset, long length, int advice, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.get-flags",
+                    (Caller caller, int descriptorHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.set-size",
+                    (Caller caller, int descriptorHandle, long size, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.read",
+                    (Caller caller, int descriptorHandle, long length, long offset, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.read-directory",
+                    (Caller caller, int descriptorHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.stat",
+                    (Caller caller, int descriptorHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.stat-at",
+                    (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.open-at",
+                    (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int openFlags, int descriptorFlags, int pathFlags, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.readlink-at",
+                    (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.unlink-file-at",
+                    (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.metadata-hash",
+                    (Caller caller, int descriptorHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]descriptor.metadata-hash-at",
+                    (Caller caller, int descriptorHandle, int pathAddress, int pathLength, int flags, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+                DefineFunction(
+                    GetVersionedModule("wasi:filesystem/types", version),
+                    "[method]directory-entry-stream.read-directory-entry",
+                    (Caller caller, int streamHandle, int resultAddress) =>
+                    {
+                        ZeroGuestMemory(caller, resultAddress, 16);
+                    });
+            }
         }
 
         /// <summary>
@@ -445,31 +487,78 @@ namespace Wasmtime
         /// </summary>
         public void DefineWasiPreview2RandomStubs()
         {
-            DefineFunction(
-                "wasi:random/random@0.2.0",
-                "get-random-bytes",
-                (Caller caller, long byteCount, int resultAddress) =>
-                {
-                    if (byteCount < 0 || byteCount > int.MaxValue)
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineFunction(
+                    GetVersionedModule("wasi:random/random", version),
+                    "get-random-bytes",
+                    (Caller caller, long byteCount, int resultAddress) =>
                     {
-                        throw new ArgumentOutOfRangeException(nameof(byteCount));
-                    }
+                        if (byteCount < 0 || byteCount > int.MaxValue)
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(byteCount));
+                        }
 
-                    var memory = GetCallerMemory(caller);
-                    var length = (int)byteCount;
-                    if (length == 0)
+                        var memory = GetCallerMemory(caller);
+                        var length = (int)byteCount;
+                        if (length == 0)
+                        {
+                            WriteListResult(memory, resultAddress, 0, 0);
+                            return;
+                        }
+
+                        var pointer = AllocateGuestBuffer(caller, length);
+                        var randomBytes = new byte[length];
+                        using var randomNumberGenerator = RandomNumberGenerator.Create();
+                        randomNumberGenerator.GetBytes(randomBytes);
+                        randomBytes.CopyTo(memory.GetSpan(pointer, length));
+                        WriteListResult(memory, resultAddress, pointer, length);
+                    });
+            }
+        }
+
+        /// <summary>
+        /// Defines preview2 socket stubs required by extracted .NET core modules.
+        /// </summary>
+        public void DefineWasiPreview2SocketStubs()
+        {
+            foreach (var version in WasiPreview2Versions)
+            {
+                DefineFunction(
+                    GetVersionedModule("wasi:sockets/tcp", version),
+                    "[method]tcp-socket.finish-connect",
+                    (Caller caller, int socketHandle, int resultAddress) =>
                     {
-                        WriteListResult(memory, resultAddress, 0, 0);
-                        return;
-                    }
+                        // Canonical ABI lowers result<(input-stream, output-stream), error-code>
+                        // to an out-parameter. Zeroed memory represents inert success handles.
+                        ZeroGuestMemory(caller, resultAddress, 24);
+                    });
+            }
+        }
 
-                    var pointer = AllocateGuestBuffer(caller, length);
-                    var randomBytes = new byte[length];
-                    using var randomNumberGenerator = RandomNumberGenerator.Create();
-                    randomNumberGenerator.GetBytes(randomBytes);
-                    randomBytes.CopyTo(memory.GetSpan(pointer, length));
-                    WriteListResult(memory, resultAddress, pointer, length);
-                });
+        private static string GetVersionedModule(string moduleBase, string version)
+        {
+            return $"{moduleBase}@{version}";
+        }
+
+        private static void TraceDefinedFunctionInvocation(string module, string name)
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable("WASMTIME_PREVIEW2_TRACE"), "1", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (!module.StartsWith("wasi:", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var key = $"{module}::{name}";
+            var count = WasiTraceCounts.AddOrUpdate(key, 1, static (_, current) => current + 1);
+            if (count <= 20 || count % 100 == 0)
+            {
+                Console.Error.WriteLine($"[wasmtime-preview2] {key} x{count}");
+            }
         }
 
         /// <summary>
@@ -485,6 +574,7 @@ namespace Wasmtime
             DefineWasiPreview2StreamStubs();
             DefineWasiPreview2FilesystemStubs();
             DefineWasiPreview2RandomStubs();
+            DefineWasiPreview2SocketStubs();
         }
 
         private void DefineResourceDropStub(string module, string resourceName)
@@ -883,6 +973,7 @@ namespace Wasmtime
                 resultKinds = resultKinds.ToArray();
                 Function.Native.WasmtimeFuncCallback func = (env, callerPtr, args, nargs, results, nresults) =>
                 {
+                    TraceDefinedFunctionInvocation(module, name);
                     return Function.InvokeUntypedCallback(callback, callerPtr, args, (int)nargs, results, (int)nresults, resultKinds);
                 };
 
