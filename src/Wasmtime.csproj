@@ -155,8 +155,10 @@ The .NET embedding of Wasmtime enables .NET code to instantiate WebAssembly modu
     </Wasmtime>
   </ItemGroup>
 
-  <!-- This target downloads wasmtime and runs before any inner TFM-specific builds -->
-  <Target Name="DownloadWasmtime" BeforeTargets="DispatchToInnerBuilds">
+  <!-- Download before the outer multi-target build and before an individual inner
+       build. The latter is required when this project is consumed through a
+       ProjectReference that fixes TargetFramework via AdditionalProperties. -->
+  <Target Name="DownloadWasmtime" BeforeTargets="DispatchToInnerBuilds;BeforeBuild">
     <DownloadFile
       Condition="('$(Packing)'=='true' Or '%(Wasmtime.Copy)'=='true') And !Exists('$(BaseIntermediateOutputPath)/$(ReleaseFileNameBase)-%(Wasmtime.Arch)-%(Wasmtime.OS)-c-api.%(Wasmtime.FileExtension)')"
       SourceUrl="$(ReleaseURLBase)/$(ReleaseFileNameBase)-%(Wasmtime.Arch)-%(Wasmtime.OS)-c-api.%(Wasmtime.FileExtension)"
