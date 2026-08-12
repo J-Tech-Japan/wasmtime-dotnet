@@ -5,7 +5,7 @@ in-process using Wasmtime. The shim is invoked from .NET via P/Invoke.
 
 ## Requirements
 
-- Rust 1.86+ (Wasmtime 35 requires a newer toolchain)
+- Rust 1.92+ (the minimum supported by Wasmtime 44)
 
 ## Build
 

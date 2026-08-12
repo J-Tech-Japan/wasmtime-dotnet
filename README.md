@@ -109,16 +109,14 @@ Use `dotnet` to build the repository:
 $ dotnet build Wasmtime.sln
 ```
 
-This will download the latest development snapshot of Wasmtime for your
-platform.
+This will download Wasmtime 44.0.0 for your platform.
 
-By default, local builds set `DevBuild=true`, which uses the dev C API artifacts
-(`wasmtime-dev-*`) and enables a `WASMTIME_DEV` build define to match the dev
-ABI (value/trap layouts). To build against the stable Wasmtime release instead,
-override the flag:
+By default, local builds set `DevBuild=false` and use the stable Wasmtime C API
+artifacts. To test against the latest development snapshot instead, override
+the flag:
 
 ```
-$ dotnet build Wasmtime.sln -p:DevBuild=false
+$ dotnet build Wasmtime.sln -p:DevBuild=true
 ```
 
 If you switch between `DevBuild=true` and `DevBuild=false`, you may need to
@@ -143,8 +141,8 @@ $ dotnet pack Wasmtime.sln -c Release /p:Packing=true
 
 This will create a `.nupkg` file in `src/bin/Release`.
 
-By default, local builds will use a `-dev` suffix for the package to
-differentiate between official packages and development packages.
+Builds with `DevBuild=true` use a `-dev` suffix for the package to differentiate
+development snapshots from stable packages.
 
 ### Updating Wasmtime for a release
 

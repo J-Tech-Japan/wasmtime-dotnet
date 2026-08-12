@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
 using System.Text;
 
 namespace Wasmtime
@@ -37,7 +36,6 @@ namespace Wasmtime
         Unreachable = 9,
         /// <summary>The trap was the result of interrupting execution.</summary>
         Interrupt = 10,
-#if WASMTIME_DEV
         /// <summary>The trap was the result of running out of the configured fuel amount.</summary>
         OutOfFuel = 11,
         /// <summary>
@@ -85,43 +83,44 @@ namespace Wasmtime
         /// </summary>
         DisabledOpCode = 21,
         /// <summary>
-        /// The trap was the result of an async event loop deadlock.
+        /// The trap was the result of an async event loop deadlocking; i.e. it cannot make further
+        /// progress given that all host tasks have completed and any/all host-owned stream/future
+        /// handles have been dropped.
         /// </summary>
-        /// <remarks>
-        /// The async event loop cannot make further progress given that all host tasks have completed
-        /// and any/all host-owned stream/future handles have been dropped.
-        /// </remarks>
         AsyncDeadlock = 22,
         /// <summary>
-        /// The trap was the result of a component instance trying to call an import or intrinsic when not allowed.
+        /// When the `component-model` feature is enabled this trap was the result of a scenario
+        /// where a component instance tried to call an import or intrinsic when it wasn't allowed
+        /// to, e.g. from a post-return function.
         /// </summary>
-        /// <remarks>
-        /// When the component-model feature is enabled this trap represents a scenario where a component instance
-        /// tried to call an import or intrinsic when it wasn't allowed to, e.g. from a post-return function.
-        /// </remarks>
         CannotLeaveComponent = 23,
         /// <summary>
-        /// The trap was the result of a synchronous task attempting to make a potentially blocking call prior to returning.
+        /// The trap was the result of a synchronous task attempted to make a potentially blocking
+        /// call prior to returning.
         /// </summary>
         CannotBlockSyncTask = 24,
         /// <summary>
-        /// The trap was the result of a component trying to lift a char with an invalid bit pattern.
+        /// The trap was the result of a component trying to lift a `char` with an invalid bit pattern.
         /// </summary>
         InvalidChar = 25,
         /// <summary>
-        /// Debug assertion generated for a fused adapter regarding the expected completion of a string encoding operation.
+        /// The trap was the result of a debug assertion generated for a fused adapter regarding the
+        /// expected completion of a string encoding operation.
         /// </summary>
         DebugAssertStringEncodingFinished = 26,
         /// <summary>
-        /// Debug assertion generated for a fused adapter regarding a string encoding operation.
+        /// The trap was the result of a debug assertion generated for a fused adapter regarding a
+        /// string encoding operation.
         /// </summary>
         DebugAssertEqualCodeUnits = 27,
         /// <summary>
-        /// Debug assertion generated for a fused adapter regarding the alignment of a pointer.
+        /// The trap was the result of a debug assertion generated for a fused adapter regarding the
+        /// alignment of a pointer.
         /// </summary>
         DebugAssertPointerAligned = 28,
         /// <summary>
-        /// Debug assertion generated for a fused adapter regarding the upper bits of a 64-bit value.
+        /// The trap was the result of a debug assertion generated for a fused adapter regarding the
+        /// upper bits of a 64-bit value.
         /// </summary>
         DebugAssertUpperBitsUnset = 29,
         /// <summary>
@@ -129,7 +128,7 @@ namespace Wasmtime
         /// </summary>
         StringOutOfBounds = 30,
         /// <summary>
-        /// The trap was the result of a component trying to lift or lower a list past the end of its memory.
+        /// The trap was the result of a component tryping to lift or lower a list past the end of its memory.
         /// </summary>
         ListOutOfBounds = 31,
         /// <summary>
@@ -137,58 +136,62 @@ namespace Wasmtime
         /// </summary>
         InvalidDiscriminant = 32,
         /// <summary>
-        /// The trap was the result of a component passing an unaligned pointer when lifting or lowering a value.
+        /// The trap was the result of a component passing an unaligned pointer when lifting or
+        /// lowering a value.
         /// </summary>
-        UnalignedPointer = 33
-#else
+        UnalignedPointer = 33,
         /// <summary>
-        /// The trap was the result of executing a function that was `canon lift`'d, then `canonlower`'d, then called.
+        /// The trap was the result of <c>task.cancel</c> being invoked in an invalid way.
         /// </summary>
-        /// <remarks>
-        /// When the component model feature is enabled this trap represents a function that was `canon lift`'d,
-        /// then `canonlower`'d, then called. This combination of creation of a function in the component model
-        /// generates a function that always traps and, when called, produces this flavor of trap.
-        /// </remarks>
-        AlwaysTrapAdapter = 11,
-        /// <summary>The trap was the result of running out of the configured fuel amount.</summary>
-        OutOfFuel = 12,
+        TaskCancelNotCancelled = 34,
         /// <summary>
-        /// The trap was the result of atomic wait operations on non-shared memory.
+        /// The trap was the result of <c>task.cancel</c> or <c>task.return</c> being called too many times
         /// </summary>
-        AtomicWaitNonSharedMemory = 13,
+        TaskCancelOrReturnTwice = 35,
         /// <summary>
-        /// The trap was the result of a call to a null reference.
+        /// The trap was the result of <c>subtask.cancel</c> being invoked after it already finished.
         /// </summary>
-        NullReference = 14,
+        SubtaskCancelAfterTerminal = 36,
         /// <summary>
-        /// The trap was the result of an attempt to access beyond the bounds of an array.
+        /// The trap was the result of <c>task.return</c> being invoked with an invalid type.
         /// </summary>
-        ArrayOutOfBounds = 15,
+        TaskReturnInvalid = 37,
         /// <summary>
-        /// The trap was the result of an allocation that was too large to succeed.
+        /// The trap was the result of <c>waitable-set.drop</c> being invoked on a waitable set with waiters.
         /// </summary>
-        AllocationTooLarge = 16,
+        WaitableSetDropHasWaiters = 38,
         /// <summary>
-        /// The trap was the result of an attempt to cast a reference to a type that it is not an instance of.
+        /// The trap was the result of <c>subtask.drop</c> being invoked on a subtask that hasn't resolved yet.
         /// </summary>
-        CastFailure = 17,
+        SubtaskDropNotResolved = 39,
         /// <summary>
-        /// The trap was the result of a component calling another component that would have violated the reentrance rules.
+        /// The trap was the result of <c>thread.new-indirect</c> being invoked with a function that
+        /// has an invalid type.
         /// </summary>
-        CannotEnterComponent = 18,
+        ThreadNewIndirectInvalidType = 40,
         /// <summary>
-        /// The trap was the result of an async-lifted export failing to return a valid async result.
+        /// The trap was the result of <c>thread.new-indirect</c> being invoked with an
+        /// uninitialized function reference.
         /// </summary>
-        /// <remarks>
-        /// An async-lifted export failed to produce a result by calling `task.return` before returning `STATUS_DONE`
-        /// and/or after all host tasks completed.
-        /// </remarks>
-        NoAsyncResult = 19,
+        ThreadNewIndirectUninitialized = 41,
         /// <summary>
-        /// The trap was the result of a Pulley opcode executed at runtime when the opcode was disabled at compile time.
+        /// The trap was the result of backpressure-related intrinsics overflowing the built-in counter.
         /// </summary>
-        DisabledOpCode = 20
-#endif
+        BackpressureOverflow = 42,
+        /// <summary>
+        /// The trap was the result of an invalid code being returned from the callback of an
+        /// async-lifted function.
+        /// </summary>
+        UnsupportedCallbackCode = 43,
+        /// <summary>
+        /// The trap was the result of trying to resume a thread which is not suspended.
+        /// </summary>
+        CannotResumeThread = 44,
+        /// <summary>
+        /// The trap was the result of a read/write being issued on a future/stream while there is a
+        /// pending operation already.
+        /// </summary>
+        ConcurrentFutureStreamOp = 45,
     }
 
     /// <summary>

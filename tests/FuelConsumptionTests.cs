@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Wasmtime.Tests
 {
-    public class FuelConsumptionFixture : ModuleFixture
+    public sealed class FuelConsumptionFixture : ModuleFixture
     {
         protected override string ModuleFileName => "FuelConsumption.wat";
 
@@ -16,7 +16,7 @@ namespace Wasmtime.Tests
         }
     }
 
-    public class FuelConsumptionTests : IClassFixture<FuelConsumptionFixture>, IDisposable
+    public sealed class FuelConsumptionTests : IClassFixture<FuelConsumptionFixture>, IDisposable
     {
         private Store Store { get; set; }
 

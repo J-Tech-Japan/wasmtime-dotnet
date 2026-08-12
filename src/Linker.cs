@@ -65,7 +65,7 @@ namespace Wasmtime
             var store = item.Store;
             if (store is null)
             {
-                throw new ArgumentException($"The item is not associated with a store.");
+                throw new ArgumentException("The item is not associated with a store.");
             }
 
             var ext = item.AsExtern();
@@ -844,9 +844,11 @@ namespace Wasmtime
         public Function? GetFunction(Store store, string module, string name)
         {
             if (store is null)
-            {
                 throw new ArgumentNullException(nameof(store));
-            }
+            if (module is null)
+                throw new ArgumentNullException(nameof(module));
+            if (name is null)
+                throw new ArgumentNullException(nameof(name));
 
             var context = store.Context;
             if (!TryGetExtern(context, module, name, out var ext) || ext.kind != ExternKind.Func)
@@ -869,9 +871,11 @@ namespace Wasmtime
         public Table? GetTable(Store store, string module, string name)
         {
             if (store is null)
-            {
                 throw new ArgumentNullException(nameof(store));
-            }
+            if (module is null)
+                throw new ArgumentNullException(nameof(module));
+            if (name is null)
+                throw new ArgumentNullException(nameof(name));
 
             var context = store.Context;
             if (!TryGetExtern(context, module, name, out var ext) || ext.kind != ExternKind.Table)
@@ -894,9 +898,11 @@ namespace Wasmtime
         public Memory? GetMemory(Store store, string module, string name)
         {
             if (store is null)
-            {
                 throw new ArgumentNullException(nameof(store));
-            }
+            if (module is null)
+                throw new ArgumentNullException(nameof(module));
+            if (name is null)
+                throw new ArgumentNullException(nameof(name));
 
             var context = store.Context;
             if (!TryGetExtern(context, module, name, out var ext) || ext.kind != ExternKind.Memory)
@@ -919,9 +925,11 @@ namespace Wasmtime
         public Global? GetGlobal(Store store, string module, string name)
         {
             if (store is null)
-            {
                 throw new ArgumentNullException(nameof(store));
-            }
+            if (module is null)
+                throw new ArgumentNullException(nameof(module));
+            if (name is null)
+                throw new ArgumentNullException(nameof(name));
 
             var context = store.Context;
             if (!TryGetExtern(context, module, name, out var ext) || ext.kind != ExternKind.Global)
@@ -952,19 +960,15 @@ namespace Wasmtime
         public void DefineFunction(string module, string name, Function.UntypedCallbackDelegate callback, IReadOnlyList<ValueKind> parameterKinds, IReadOnlyList<ValueKind> resultKinds)
         {
             if (module is null)
-            {
                 throw new ArgumentNullException(nameof(module));
-            }
-
             if (name is null)
-            {
                 throw new ArgumentNullException(nameof(name));
-            }
-
             if (callback is null)
-            {
                 throw new ArgumentNullException(nameof(callback));
-            }
+            if (parameterKinds is null)
+                throw new ArgumentNullException(nameof(parameterKinds));
+            if (resultKinds is null)
+                throw new ArgumentNullException(nameof(resultKinds));
 
             unsafe
             {

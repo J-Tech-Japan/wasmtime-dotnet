@@ -1,12 +1,13 @@
-use anyhow::{bail, Context, Result};
+use wasmtime::{bail, Result};
 use std::ffi::{CStr, CString};
 use std::ops::Range;
 use std::os::raw::{c_char, c_int};
 use wasmtime::{Engine, Store};
 use wasmtime::component::{Component, Linker, ResourceTable, Val, types};
-use wasmtime_wasi::{DirPerms, FilePerms};
-use wasmtime_wasi::p2::{IoView, WasiCtx, WasiCtxBuilder, WasiView};
-use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
+use wasmtime::error::Context;
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi_http::WasiHttpCtx;
+use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView};
 use wasmparser::{Parser, Payload};
 
 #[repr(C)]
@@ -21,21 +22,22 @@ struct Preview2State {
     http: WasiHttpCtx,
 }
 
-impl IoView for Preview2State {
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
-    }
-}
-
 impl WasiView for Preview2State {
-    fn ctx(&mut self) -> &mut WasiCtx {
-        &mut self.wasi
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
     }
 }
 
 impl WasiHttpView for Preview2State {
-    fn ctx(&mut self) -> &mut WasiHttpCtx {
-        &mut self.http
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
+            ctx: &mut self.http,
+            table: &mut self.table,
+            hooks: Default::default(),
+        }
     }
 }
 
@@ -84,7 +86,7 @@ pub unsafe extern "C" fn wasmtime_preview2_run_component(
             1
         }
         Err(_) => {
-            write_error(anyhow::anyhow!("panic while executing component"), error_message_out);
+            write_error(wasmtime::format_err!("panic while executing component"), error_message_out);
             2
         }
     }
@@ -122,13 +124,13 @@ pub unsafe extern "C" fn wasmtime_preview2_extract_core_module(
             1
         }
         Err(_) => {
-            write_error(anyhow::anyhow!("panic while extracting core module"), error_message_out);
+            write_error(wasmtime::format_err!("panic while extracting core module"), error_message_out);
             2
         }
     }
 }
 
-fn write_error(err: anyhow::Error, error_message_out: *mut *mut c_char) {
+fn write_error(err: wasmtime::Error, error_message_out: *mut *mut c_char) {
     if error_message_out.is_null() {
         return;
     }
@@ -199,7 +201,7 @@ unsafe fn run_component_inner(
     let mut linker = Linker::<Preview2State>::new(&engine);
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
         .context("failed to add WASI preview2 to linker")?;
-    wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
+    wasmtime_wasi_http::p2::add_only_http_to_linker_sync(&mut linker)
         .context("failed to add WASI HTTP to linker")?;
 
     let state = Preview2State {
@@ -252,7 +254,7 @@ unsafe fn extract_core_module_inner(
     let range = ranges
         .into_iter()
         .max_by_key(|r| r.end.saturating_sub(r.start))
-        .ok_or_else(|| anyhow::anyhow!("no core modules found in component"))?;
+        .ok_or_else(|| wasmtime::format_err!("no core modules found in component"))?;
 
     if range.end > bytes.len() || range.start >= range.end {
         bail!("core module range is out of bounds");
@@ -372,7 +374,7 @@ pub unsafe extern "C" fn wasmtime_preview2_instantiate_component(
         }
         Err(_) => {
             write_error(
-                anyhow::anyhow!("panic while instantiating component"),
+                wasmtime::format_err!("panic while instantiating component"),
                 error_message_out,
             );
             std::ptr::null_mut()
@@ -399,7 +401,7 @@ unsafe fn instantiate_component_inner(
     let mut linker = Linker::<Preview2State>::new(&engine);
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
         .context("failed to add WASI preview2 to linker")?;
-    wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
+    wasmtime_wasi_http::p2::add_only_http_to_linker_sync(&mut linker)
         .context("failed to add WASI HTTP to linker")?;
 
     let mut builder = WasiCtxBuilder::new();
@@ -435,7 +437,7 @@ pub unsafe extern "C" fn wasmtime_preview2_call_func(
     error_message_out: *mut *mut c_char,
 ) -> c_int {
     if handle.is_null() {
-        write_error(anyhow::anyhow!("handle is null"), error_message_out);
+        write_error(wasmtime::format_err!("handle is null"), error_message_out);
         return 1;
     }
 
@@ -454,7 +456,7 @@ pub unsafe extern "C" fn wasmtime_preview2_call_func(
                     0
                 }
                 Err(e) => {
-                    write_error(anyhow::anyhow!("result contains null byte: {e}"), error_message_out);
+                    write_error(wasmtime::format_err!("result contains null byte: {e}"), error_message_out);
                     1
                 }
             }
@@ -464,7 +466,7 @@ pub unsafe extern "C" fn wasmtime_preview2_call_func(
             1
         }
         Err(_) => {
-            write_error(anyhow::anyhow!("panic while calling function"), error_message_out);
+            write_error(wasmtime::format_err!("panic while calling function"), error_message_out);
             2
         }
     }
@@ -501,8 +503,9 @@ unsafe fn call_func_inner(
         .with_context(|| format!("function '{func_name}' not found in component exports"))?;
 
     // Get the function type to determine parameter and result types
-    let param_types = func.params(&handle.store);
-    let result_types = func.results(&handle.store);
+    let func_type = func.ty(&handle.store);
+    let param_types: Vec<_> = func_type.params().collect();
+    let result_types: Vec<_> = func_type.results().collect();
 
     // Convert JSON args to Val
     let mut vals: Vec<Val> = Vec::with_capacity(json_args.len());
@@ -521,8 +524,6 @@ unsafe fn call_func_inner(
     // Call the function
     func.call(&mut handle.store, &vals, &mut results)
         .with_context(|| format!("failed to call function '{func_name}'"))?;
-    func.post_return(&mut handle.store)
-        .context("post_return failed")?;
 
     // Convert results to JSON
     let json_results: Vec<serde_json::Value> = results

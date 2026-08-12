@@ -6,12 +6,12 @@ using Xunit;
 
 namespace Wasmtime.Tests
 {
-    public class FunctionsFixture : ModuleFixture
+    public sealed class FunctionsFixture : ModuleFixture
     {
         protected override string ModuleFileName => "Functions.wat";
     }
 
-    public class FunctionTests : IClassFixture<FunctionsFixture>, IDisposable
+    public sealed class FunctionTests : IClassFixture<FunctionsFixture>, IDisposable
     {
         const string THROW_MESSAGE = "Test error message for wasmtime dotnet unit tests.";
 
@@ -47,7 +47,7 @@ namespace Wasmtime.Tests
                         r[i] = i;
                     }
                 },
-                Array.Empty<ValueKind>(),
+                [],
                 Enumerable.Repeat(ValueKind.Int32, 15).ToArray()
             ));
 
@@ -61,7 +61,7 @@ namespace Wasmtime.Tests
                     }
                 },
                 Enumerable.Repeat(ValueKind.Int32, 15).ToArray(),
-                Array.Empty<ValueKind>()
+                []
             ));
 
             var emptyFunc = Function.FromCallback(Store, () => { });
@@ -77,17 +77,16 @@ namespace Wasmtime.Tests
                 r[5] = emptyFunc;
                 r[6] = "hello";
             },
-                Array.Empty<ValueKind>(),
-                new ValueKind[]
-                    {
-                        ValueKind.Int32,
-                        ValueKind.Int64,
-                        ValueKind.Float32,
-                        ValueKind.Float64,
-                        ValueKind.V128,
-                        ValueKind.FuncRef,
-                        ValueKind.ExternRef
-                    }
+                [],
+                [
+                    ValueKind.Int32,
+                    ValueKind.Int64,
+                    ValueKind.Float32,
+                    ValueKind.Float64,
+                    ValueKind.V128,
+                    ValueKind.FuncRef,
+                    ValueKind.ExternRef,
+                ]
             ));
 
             Linker.Define("env", "accept_all_types", Function.FromCallback(Store,
@@ -197,15 +196,22 @@ namespace Wasmtime.Tests
             }
 
             var instance = Linker.Instantiate(Store, Fixture.Module);
-            var add = instance.GetFunction("add");
+            var add = instance.GetFunction("add")!;
 
-            var args = new ValueBox[]
-            {
-                new ValueBox(ValueKind.Int32, new ValueUnion { i32 = 40 }),
-                new ValueBox(ValueKind.Int32, new ValueUnion { i32 = 2 })
-            };
-            int x = (int)add.Invoke(args.AsSpan());
+            var args = new ValueBox[] { 40, 2 };
+            int x = (int)add.Invoke(args.AsSpan())!;
             x.Should().Be(42);
+        }
+
+        [Fact]
+        public void ItThrowsWithMismatchedParameterCount()
+        {
+            var instance = Linker.Instantiate(Store, Fixture.Module);
+            var add = instance.GetFunction("add")!;
+
+            var args = new ValueBox[] { 40, 2, 9 };
+
+            Assert.Throws<WasmtimeException>(() => add.Invoke(args.AsSpan()));
         }
 
         [Fact]
@@ -600,8 +606,8 @@ namespace Wasmtime.Tests
                         results[0] = new ValueBox(null);
                     }
                 },
-                Array.Empty<ValueKind>(),
-                new[] { ValueKind.Int32, ValueKind.Int64, ValueKind.Float32, ValueKind.Float64, ValueKind.V128, ValueKind.FuncRef, ValueKind.ExternRef }));
+                [],
+                [ ValueKind.Int32, ValueKind.Int64, ValueKind.Float32, ValueKind.Float64, ValueKind.V128, ValueKind.FuncRef, ValueKind.ExternRef ]));
 
             Linker.Define("env", "accept_all_types", Function.FromCallback(Store, (Caller caller, ReadOnlySpan<ValueBox> arguments, Span<ValueBox> results) =>
                 {
@@ -635,8 +641,9 @@ namespace Wasmtime.Tests
                     shouldThrow = () => arg6.AsInt32();
                     shouldThrow.Should().Throw<InvalidCastException>().WithMessage("Cannot convert from `ExternRef` to `Int32`");
                 },
-                new[] { ValueKind.Int32, ValueKind.Int64, ValueKind.Float32, ValueKind.Float64, ValueKind.V128, ValueKind.FuncRef, ValueKind.ExternRef },
-                Array.Empty<ValueKind>()));
+                [ ValueKind.Int32, ValueKind.Int64, ValueKind.Float32, ValueKind.Float64, ValueKind.V128, ValueKind.FuncRef, ValueKind.ExternRef ],
+                []
+            ));
 
             var instance = Linker.Instantiate(Store, Fixture.Module);
             var action = instance.GetAction("get_and_pass_all_types");
